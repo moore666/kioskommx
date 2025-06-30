@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Kiosco PWA</title>
+    <meta name="theme-color" content="#3B82F6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Mi Kiosco">
+    <meta name="description" content="Administrador completo para tu mini kiosco">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Librería para exportar a Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        .btn-primary {
+            background: linear-gradient(135deg, #3B82F6, #8B5CF6);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #2563EB, #7C3AED);
+            transform: scale(1.05);
+        }
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+        .offline-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            padding: 8px 16px;
+            background: #EF4444;
+            color: white;
+            border-radius: 8px;
+            font-size: 14px;
+            display: none;
+        }
+        .online-indicator {
+            background: #10B981 !important;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 min-h-screen">
+    
+    <!-- Pantalla de Login -->
+    <div id="login-screen" class="fixed inset-0 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-800 flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4">
+            <div class="text-center mb-8">
+                <div class="text-6xl mb-4">🏪</div>
+                <h1 class="text-2xl font-bold text-gray-800 mb-2">Mi Kiosco PWA</h1>
+                <p class="text-gray-600">Ingresa tu código de acceso</p>
+            </div>
+            
+            <div class="space-y-4">
+                <div class="relative">
+                    <input
+                        type="password"
+                        id="codigo-acceso"
+                        placeholder="Código de acceso"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg text-center text-2xl font-bold focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        maxlength="6"
+                        autofocus
+                    />
+                </div>
+                
+                <button
+                    onclick="iniciarSesion()"
+                    class="w-full btn-primary text-white py-3 rounded-lg font-bold text-lg"
+                >
+                    🔓 Acceder
+                </button>
+                
+                <div id="error-login" class="text-red-500 text-center text-sm" style="display: none;">
+                    Código incorrecto. Inténtalo de nuevo.
+                </div>
+            </div>
+            
+            <div class="mt-8 text-center">
+                <div class="text-xs text-gray-500 space-y-1">
+                    <p><strong>Admin:</strong> 1234 (acceso completo)</p>
+                    <p><strong>Vendedor:</strong> 5678 (solo ventas)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Indicador de Conexión -->
+    <div id="connection-status" class="offline-indicator">
+        📡 Sin conexión - Modo offline
+    </div>
+    
+    <!-- Header -->
+    <header class="bg-white shadow-lg border-b border-gray-200" style="display: none;">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <div class="flex items-center justify-between flex-wrap">
+                <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                    🏪 Mi Kiosco PWA
+                </h1>
+                <div class="flex space-x-2 items-center mt-2 sm:mt-0">
+                    <button onclick="cambiarVista('ventas', event)" class="nav-btn btn-primary text-white px-4 py-2 rounded-lg font-semibold">
+                        🛒 Ventas
+                    </button>
+                    <button onclick="cambiarVista('inventario', event)" class="nav-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold" id="btn-inventario">
+                        📦 Inventario
+                    </button>
+                    <button onclick="cambiarVista('estadisticas', event)" class="nav-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold" id="btn-estadisticas">
+                        📊 Stats
+                    </button>
+                    <button onclick="cambiarVista('reportes', event)" class="nav-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold" id="btn-reportes">
+                        📋 Reportes
+                    </button>
+                    <button onclick="cerrarSesion()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-semibold transition-all">
+                        🚪 Salir
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-6" id="main-app" style="display: none;">
+        
+        <!-- Vista de Ventas -->
+        <div id="vista-ventas" class="vista">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2">
+                    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">Productos</h2>
+                        <div class="flex flex-col sm:flex-row gap-4 mb-6">
+                            <input type="text" id="busqueda-producto" placeholder="Buscar producto..." class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" oninput="filtrarProductos()"/>
+                            <select id="filtro-categoria" onchange="filtrarProductos()" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <option value="TODAS">TODAS</option>
+                                <option value="GALLETITAS">GALLETITAS</option>
+                                <option value="BARRITAS">BARRITAS</option>
+                                <option value="ALFAJORES SIMPLES">ALFAJORES</option>
+                                <option value="GOLOSINAS">GOLOSINAS</option>
+                                <option value="BEBIDAS">BEBIDAS</option>
+                                <option value="SALADO">SALADO</option>
+                            </select>
+                        </div>
+                        <div id="productos-grid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 max-h-96 overflow-y-auto"></div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4">🛒 Carrito (<span id="carrito-count">0</span>)</h2>
+                    <div id="carrito-items" class="space-y-3 mb-6 max-h-64 overflow-y-auto"></div>
+                    <div id="carrito-total" class="border-t pt-4 mb-4" style="display: none;">
+                        <div class="flex justify-between text-xl font-bold">
+                            <span>Total:</span>
+                            <span id="total-amount" class="text-green-600">$0</span>
+                        </div>
+                    </div>
+                    <button id="procesar-venta-btn" onclick="procesarVenta()" class="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3 rounded-lg font-bold hover:from-green-600 hover:to-emerald-700 transition-all" style="display: none;">Procesar Venta</button>
+                    <p id="carrito-vacio" class="text-gray-500 text-center py-8">El carrito está vacío</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vista de Inventario -->
+        <div id="vista-inventario" class="vista" style="display: none;">
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold text-gray-800">Gestión de Inventario</h2>
+                    <button onclick="nuevoProducto()" class="btn-primary text-white px-4 py-2 rounded-lg">➕ Nuevo Producto</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full table-auto">
+                        <thead>
+                            <tr class="bg-gray-50">
+                                <th class="px-4 py-3 text-left font-semibold">Código</th>
+                                <th class="px-4 py-3 text-left font-semibold">Producto</th>
+                                <th class="px-4 py-3 text-left font-semibold">Categoría</th>
+                                <th class="px-4 py-3 text-left font-semibold">Precio</th>
+                                <th class="px-4 py-3 text-left font-semibold">Stock</th>
+                                <th class="px-4 py-3 text-left font-semibold">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventario-tabla"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vista de Estadísticas -->
+        <div id="vista-estadisticas" class="vista" style="display: none;">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                <div class="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl p-6 shadow-lg">
+                    <div class="flex items-center justify-between">
+                        <div><p class="text-blue-100">Ventas Hoy</p><p id="ventas-hoy" class="text-2xl font-bold">$0</p></div><span class="text-3xl">💰</span>
+                    </div>
+                </div>
+                <div class="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl p-6 shadow-lg">
+                    <div class="flex items-center justify-between">
+                        <div><p class="text-green-100">Productos Vendidos</p><p id="productos-vendidos" class="text-2xl font-bold">0</p></div><span class="text-3xl">📦</span>
+                    </div>
+                </div>
+                <div class="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl p-6 shadow-lg">
+                    <div class="flex items-center justify-between">
+                        <div><p class="text-purple-100">Total Productos</p><p id="total-productos" class="text-2xl font-bold">0</p></div><span class="text-3xl">📈</span>
+                    </div>
+                </div>
+                <div class="bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl p-6 shadow-lg">
+                    <div class="flex items-center justify-between">
+                        <div><p class="text-orange-100">Transacciones Hoy</p><p id="transacciones-hoy" class="text-2xl font-bold">0</p></div><span class="text-3xl">👥</span>
+                    </div>
+                </div>
+                <div class="md:col-span-2 lg:col-span-4 bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Historial de Ventas</h3>
+                    <div id="historial-ventas" class="space-y-3 max-h-64 overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vista de Reportes -->
+        <div id="vista-reportes" class="vista" style="display: none;">
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-6">Generador de Reportes de Ventas</h2>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg bg-gray-50">
+                    <div>
+                        <label for="filtro-fecha-inicio" class="block text-sm font-medium text-gray-700">Fecha Inicio</label>
+                        <input type="date" id="filtro-fecha-inicio" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                    </div>
+                    <div>
+                        <label for="filtro-fecha-fin" class="block text-sm font-medium text-gray-700">Fecha Fin</label>
+                        <input type="date" id="filtro-fecha-fin" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                    </div>
+                    <div>
+                        <label for="filtro-categoria-reporte" class="block text-sm font-medium text-gray-700">Categoría</label>
+                        <select id="filtro-categoria-reporte" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"></select>
+                    </div>
+                    <div>
+                        <label for="filtro-vendedor-reporte" class="block text-sm font-medium text-gray-700">Vendedor</label>
+                        <select id="filtro-vendedor-reporte" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"></select>
+                    </div>
+                    <div class="md:col-span-4 flex justify-end">
+                        <button onclick="generarReporte()" class="btn-primary text-white px-6 py-2 rounded-lg">Generar Reporte</button>
+                    </div>
+                </div>
+                <div id="resultado-reporte" class="hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-bold text-gray-800" id="reporte-titulo"></h3>
+                        <div class="flex space-x-2">
+                            <button onclick="exportarAExcel()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm">📑 Exportar a Excel</button>
+                            <button onclick="copiarParaGoogleSheets()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm">📋 Copiar para Google Sheets</button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table id="tabla-reporte" class="w-full table-auto">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    <th class="px-4 py-3 text-left font-semibold">Código</th>
+                                    <th class="px-4 py-3 text-left font-semibold">Producto</th>
+                                    <th class="px-4 py-3 text-left font-semibold">Categoría</th>
+                                    <th class="px-4 py-3 text-left font-semibold">Cant. Vendida</th>
+                                    <th class="px-4 py-3 text-left font-semibold">Precio Unit.</th>
+                                    <th class="px-4 py-3 text-left font-semibold">Total Vendido</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cuerpo-tabla-reporte"></tbody>
+                            <tfoot id="pie-tabla-reporte" class="bg-gray-100 font-bold"></tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal de edición de producto -->
+    <div id="modal-editar" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md">
+            <h3 id="modal-title" class="text-lg font-bold mb-4">Editar Producto</h3>
+            <div class="space-y-4">
+                <input type="hidden" id="edit-id">
+                <input type="text" id="edit-nombre" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Nombre" />
+                <input type="text" id="edit-codigo" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Código" />
+                <input type="number" id="edit-precio" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Precio" />
+                <input type="number" id="edit-stock" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Stock" />
+                <select id="edit-categoria" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option value="GALLETITAS">GALLETITAS</option>
+                    <option value="BARRITAS">BARRITAS</option>
+                    <option value="ALFAJORES SIMPLES">ALFAJORES</option>
+                    <option value="GOLOSINAS">GOLOSINAS</option>
+                    <option value="BEBIDAS">BEBIDAS</option>
+                    <option value="SALADO">SALADO</option>
+                </select>
+            </div>
+            <div class="flex space-x-3 mt-6">
+                <button onclick="guardarProducto()" class="flex-1 bg-green-500 text-white py-2 rounded-lg hover:bg-green-600">💾 Guardar</button>
+                <button onclick="cerrarModal()" class="flex-1 bg-gray-500 text-white py-2 rounded-lg hover:bg-gray-600">❌ Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de detalle de venta -->
+    <div id="modal-detalle-venta" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl p-6 w-full max-w-lg">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold">Detalle de Venta</h3>
+                <button onclick="cerrarModalDetalleVenta()" class="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button>
+            </div>
+            <div id="contenido-detalle-venta"></div>
+        </div>
+    </div>
+
+    <!-- Modal de instrucciones para Google Sheets -->
+    <div id="modal-google-sheets" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md text-center">
+            <h3 class="text-lg font-bold mb-4">Copiado al Portapapeles</h3>
+            <p class="mb-4">Los datos del reporte han sido copiados. Sigue estos pasos:</p>
+            <ol class="text-left list-decimal list-inside space-y-2">
+                <li>Abre una hoja de cálculo de Google Sheets.</li>
+                <li>Haz clic en la celda A1 (la primera celda).</li>
+                <li>Pega los datos (Ctrl+V o Cmd+V).</li>
+            </ol>
+            <button onclick="this.parentElement.parentElement.classList.add('hidden')" class="mt-6 w-full bg-blue-500 text-white py-2 rounded-lg">Entendido</button>
+        </div>
+    </div>
+
+    <!-- Notificación Toast -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg transform translate-y-full transition-transform z-50">
+        <span id="toast-message"></span>
+    </div>
+
+    <script>
+        // --- VARIABLES GLOBALES ---
+        let productos = [
+            { id: 1, codigo: '01', nombre: 'DON SATUR bizcocho dulce x200g', precio: 700, categoria: 'GALLETITAS', stock: 10 },
+            { id: 2, codigo: '02', nombre: 'BAGLEY galletitas porteñitas', precio: 600, categoria: 'GALLETITAS', stock: 15 },
+            { id: 3, codigo: '03', nombre: 'Arcor galletita macucas x110g', precio: 600, categoria: 'GALLETITAS', stock: 8 },
+            { id: 4, codigo: '04', nombre: '9 DE ORO bizcocho grasa x200g', precio: 600, categoria: 'GALLETITAS', stock: 12 },
+            { id: 5, codigo: '05', nombre: 'ARCOR galletita mana leche x136g', precio: 700, categoria: 'GALLETITAS', stock: 6 },
+            { id: 6, codigo: '07', nombre: 'FELFORT barra cereal fort chocolate', precio: 500, categoria: 'BARRITAS', stock: 20 },
+            { id: 7, codigo: '08', nombre: 'FELFORT barra cereal fort frutilla light', precio: 500, categoria: 'BARRITAS', stock: 18 },
+            { id: 8, codigo: '09', nombre: 'ARCOR cereal mix yorg/frut', precio: 500, categoria: 'BARRITAS', stock: 14 },
+            { id: 9, codigo: '15', nombre: 'JORGITO alfajor triple', precio: 800, categoria: 'ALFAJORES SIMPLES', stock: 25 },
+            { id: 10, codigo: '16', nombre: 'HAVANNA alfajor mixto', precio: 1200, categoria: 'ALFAJORES SIMPLES', stock: 10 },
+            { id: 11, codigo: '25', nombre: 'ARCOR caramelos butter toffees', precio: 300, categoria: 'GOLOSINAS', stock: 30 },
+            { id: 12, codigo: '26', nombre: 'CADBURY chocolate dairy milk', precio: 900, categoria: 'GOLOSINAS', stock: 8 },
+            { id: 13, codigo: '35', nombre: 'Coca Cola 500ml', precio: 800, categoria: 'BEBIDAS', stock: 24 },
+            { id: 14, codigo: '36', nombre: 'Agua mineral Villavicencio 500ml', precio: 400, categoria: 'BEBIDAS', stock: 30 },
+            { id: 15, codigo: '45', nombre: 'LAYS papas fritas clásicas', precio: 850, categoria: 'SALADO', stock: 12 }
+        ];
+        let ventas = [];
+        let carrito = [];
+        const USUARIOS = {
+            "1234": { rol: "admin", nombre: "Administrador" },
+            "5678": { rol: "vendedor", nombre: "Vendedor" }
+        };
+        let usuarioActual = null;
+        let tiempoUltimaActividad = Date.now();
+        const TIEMPO_INACTIVIDAD = 30 * 60 * 1000; // 30 minutos
+        let reportData = [];
+        let deferredPrompt;
+
+        // --- INICIALIZACIÓN ---
+        document.addEventListener('DOMContentLoaded', function() {
+            verificarSesion();
+            cargarDatos();
+            configurarPWA();
+            configurarInactividad();
+            configurarListeners();
+        });
+
+        function configurarListeners() {
+            document.getElementById('codigo-acceso').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') iniciarSesion();
+            });
+            document.getElementById('modal-editar').addEventListener('click', function(e) {
+                if (e.target === this) cerrarModal();
+            });
+            document.getElementById('modal-detalle-venta').addEventListener('click', function(e) {
+                if (e.target === this) cerrarModalDetalleVenta();
+            });
+            document.getElementById('modal-google-sheets').addEventListener('click', function(e) {
+                if (e.target === this) this.classList.add('hidden');
+            });
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredPrompt = e;
+                console.log('`beforeinstallprompt` event was fired.');
+            });
+            window.addEventListener('appinstalled', () => {
+                mostrarToast('¡App instalada correctamente!');
+                deferredPrompt = null;
+            });
+        }
+
+        // --- AUTENTICACIÓN Y SESIÓN ---
+        function verificarSesion() {
+            const sesionGuardada = localStorage.getItem('kiosco-sesion');
+            if (sesionGuardada) {
+                try {
+                    const sesion = JSON.parse(sesionGuardada);
+                    if (Date.now() - sesion.timestamp < 24 * 60 * 60 * 1000) {
+                        usuarioActual = sesion.usuario;
+                        mostrarApp();
+                        return;
+                    }
+                } catch (e) { console.error('Error cargando sesión:', e); }
+            }
+            mostrarLogin();
+        }
+
+        function iniciarSesion() {
+            const codigo = document.getElementById('codigo-acceso').value;
+            const errorEl = document.getElementById('error-login');
+            if (USUARIOS[codigo]) {
+                usuarioActual = USUARIOS[codigo];
+                localStorage.setItem('kiosco-sesion', JSON.stringify({ usuario: usuarioActual, timestamp: Date.now() }));
+                mostrarApp();
+                mostrarToast('¡Bienvenido ' + usuarioActual.nombre + '!');
+            } else {
+                errorEl.style.display = 'block';
+                document.getElementById('codigo-acceso').value = '';
+                setTimeout(() => { errorEl.style.display = 'none'; }, 3000);
+            }
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem('kiosco-sesion');
+            usuarioActual = null;
+            carrito = [];
+            mostrarLogin();
+            mostrarToast('Sesión cerrada correctamente');
+        }
+
+        function configurarInactividad() {
+            ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'].forEach(event => {
+                document.addEventListener(event, () => { tiempoUltimaActividad = Date.now(); }, true);
+            });
+            setInterval(() => {
+                if (usuarioActual && Date.now() - tiempoUltimaActividad > TIEMPO_INACTIVIDAD) {
+                    mostrarToast('Sesión cerrada por inactividad');
+                    setTimeout(cerrarSesion, 2000);
+                }
+            }, 60000);
+        }
+
+        // --- NAVEGACIÓN Y UI ---
+        function mostrarLogin() {
+            document.getElementById('login-screen').style.display = 'flex';
+            document.getElementById('main-app').style.display = 'none';
+            document.querySelector('header').style.display = 'none';
+            document.getElementById('codigo-acceso').focus();
+        }
+
+        function mostrarApp() {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('main-app').style.display = 'block';
+            document.querySelector('header').style.display = 'block';
+            configurarPermisos();
+            cambiarVista('ventas', { currentTarget: document.querySelector('.nav-btn') });
+        }
+
+        function configurarPermisos() {
+            const esAdmin = usuarioActual.rol === 'admin';
+            document.getElementById('btn-inventario').style.display = esAdmin ? 'block' : 'none';
+            document.getElementById('btn-estadisticas').style.display = esAdmin ? 'block' : 'none';
+            document.getElementById('btn-reportes').style.display = esAdmin ? 'block' : 'none';
+            document.querySelector('header h1').innerHTML = `🏪 Mi Kiosco PWA - ${usuarioActual.nombre}`;
+        }
+
+        function cambiarVista(vista, event) {
+            if (usuarioActual.rol !== 'admin' && ['inventario', 'estadisticas', 'reportes'].includes(vista)) {
+                mostrarToast('No tienes permisos para acceder a esta sección');
+                return;
+            }
+            document.querySelectorAll('.vista').forEach(v => v.style.display = 'none');
+            document.getElementById('vista-' + vista).style.display = 'block';
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('btn-primary', 'text-white');
+                btn.classList.add('bg-gray-200', 'text-gray-700');
+            });
+            if (event && event.currentTarget) {
+                event.currentTarget.classList.add('btn-primary', 'text-white');
+                event.currentTarget.classList.remove('bg-gray-200', 'text-gray-700');
+            }
+            if (vista === 'inventario') mostrarInventario();
+            if (vista === 'estadisticas') mostrarEstadisticas();
+            if (vista === 'reportes') mostrarVistaReportes();
+            if (vista === 'ventas') filtrarProductos();
+        }
+
+        function mostrarToast(mensaje) {
+            const toast = document.getElementById('toast');
+            toast.querySelector('span').textContent = mensaje;
+            toast.style.transform = 'translateY(0)';
+            setTimeout(() => { toast.style.transform = 'translateY(150%)'; }, 3000);
+        }
+
+        // --- PWA Y DATOS ---
+        function configurarPWA() {
+            const svgIcon192 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" fill="#3B82F6" rx="32"/><text x="96" y="120" font-size="90" text-anchor="middle" fill="white">🏪</text></svg>';
+            const svgIcon512 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" fill="#3B82F6" rx="85"/><text x="256" y="320" font-size="240" text-anchor="middle" fill="white">🏪</text></svg>';
+            const manifest = { name: "Mi Kiosco PWA", short_name: "Mi Kiosco", description: "Administrador completo para tu mini kiosco", start_url: ".", display: "standalone", background_color: "#ffffff", theme_color: "#3B82F6", orientation: "portrait-primary", icons: [{ src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgIcon192)}`, sizes: "192x192", type: "image/svg+xml" }, { src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgIcon512)}`, sizes: "512x512", type: "image/svg+xml" }] };
+            const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+            const link = document.createElement('link');
+            link.rel = 'manifest';
+            link.href = URL.createObjectURL(manifestBlob);
+            document.head.appendChild(link);
+
+            if ('serviceWorker' in navigator) {
+                const swCode = `const CACHE_NAME="kiosco-pwa-v4";self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE_NAME).then(c=>c.addAll(["./"])))})self.addEventListener("fetch",e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)))});`;
+                const swBlob = new Blob([swCode], {type: 'application/javascript'});
+                navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(e => console.error('Error al registrar SW:', e));
+            }
+            window.addEventListener('online', () => mostrarEstadoConexion(true));
+            window.addEventListener('offline', () => mostrarEstadoConexion(false));
+        }
+
+        function mostrarEstadoConexion(online) {
+            const statusEl = document.getElementById('connection-status');
+            statusEl.textContent = online ? '📡 Conectado' : '📡 Sin conexión - Modo offline';
+            statusEl.classList.toggle('online-indicator', online);
+            statusEl.style.display = 'block';
+            setTimeout(() => statusEl.style.display = 'none', 3000);
+        }
+
+        function guardarDatos() {
+            localStorage.setItem('kiosco-productos', JSON.stringify(productos));
+            localStorage.setItem('kiosco-ventas', JSON.stringify(ventas));
+            localStorage.setItem('kiosco-carrito', JSON.stringify(carrito));
+        }
+
+        function cargarDatos() {
+            try {
+                const p = localStorage.getItem('kiosco-productos');
+                const v = localStorage.getItem('kiosco-ventas');
+                const c = localStorage.getItem('kiosco-carrito');
+                if (p) productos = JSON.parse(p);
+                if (v) ventas = JSON.parse(v);
+                if (c) carrito = JSON.parse(c);
+            } catch (e) { console.error('Error cargando datos:', e); }
+        }
+
+        // --- LÓGICA DE NEGOCIO (PRODUCTOS, VENTAS, CARRITO) ---
+        function filtrarProductos() {
+            const busqueda = document.getElementById('busqueda-producto').value.toLowerCase();
+            const categoria = document.getElementById('filtro-categoria').value;
+            const productosFiltrados = productos.filter(p => (p.nombre.toLowerCase().includes(busqueda) || p.codigo.includes(busqueda)) && (categoria === 'TODAS' || p.categoria === categoria));
+            mostrarProductos(productosFiltrados);
+        }
+
+        function mostrarProductos(productosAMostrar = productos) {
+            const grid = document.getElementById('productos-grid');
+            grid.innerHTML = '';
+            productosAMostrar.forEach(p => {
+                const stockClass = p.stock > 10 ? 'bg-green-100 text-green-800' : p.stock > 5 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden card-hover';
+                card.innerHTML = `<div class="p-4"><div class="flex justify-between items-start mb-3"><span class="text-xs font-semibold px-3 py-1 bg-blue-100 text-blue-800 rounded-full">#${p.codigo}</span><span class="text-xs font-semibold px-3 py-1 rounded-full ${stockClass}">Stock: ${p.stock}</span></div><h3 class="font-bold text-gray-800 text-sm mb-2 h-10 overflow-hidden leading-tight">${p.nombre}</h3><div class="flex justify-between items-center mb-3"><span class="text-lg font-bold text-green-600">$${p.precio}</span><span class="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">${p.categoria}</span></div><button onclick="agregarAlCarrito(${p.id})" ${p.stock === 0 ? 'disabled' : ''} class="w-full py-2 px-4 rounded-lg font-semibold transition-all duration-200 ${p.stock === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'btn-primary text-white'}">${p.stock === 0 ? 'Sin Stock' : 'Agregar'}</button></div>`;
+                grid.appendChild(card);
+            });
+        }
+
+        function agregarAlCarrito(productoId) {
+            const producto = productos.find(p => p.id === productoId);
+            if (!producto || producto.stock === 0) return;
+            const itemExistente = carrito.find(item => item.id === productoId);
+            if (itemExistente) {
+                if (itemExistente.cantidad < producto.stock) itemExistente.cantidad++;
+                else mostrarToast('No hay más stock de este producto');
+            } else {
+                carrito.push({...producto, cantidad: 1});
+            }
+            mostrarCarrito();
+            guardarDatos();
+            mostrarToast('Producto agregado al carrito');
+        }
+
+        function modificarCantidadCarrito(id, nuevaCantidad) {
+            const item = carrito.find(item => item.id === id);
+            if (!item) return;
+            if (nuevaCantidad <= 0) {
+                carrito = carrito.filter(i => i.id !== id);
+            } else {
+                const producto = productos.find(p => p.id === id);
+                if (nuevaCantidad <= producto.stock) item.cantidad = nuevaCantidad;
+                else {
+                    mostrarToast('Stock máximo alcanzado');
+                    item.cantidad = producto.stock;
+                }
+            }
+            mostrarCarrito();
+            guardarDatos();
+        }
+
+        function mostrarCarrito() {
+            const container = document.getElementById('carrito-items');
+            const countEl = document.getElementById('carrito-count');
+            const totalEl = document.getElementById('total-amount');
+            const btnProcesar = document.getElementById('procesar-venta-btn');
+            const divTotal = document.getElementById('carrito-total');
+            const msgVacio = document.getElementById('carrito-vacio');
+            
+            countEl.textContent = carrito.reduce((sum, item) => sum + item.cantidad, 0);
+            
+            if (carrito.length === 0) {
+                container.innerHTML = '';
+                divTotal.style.display = 'none';
+                btnProcesar.style.display = 'none';
+                msgVacio.style.display = 'block';
+                return;
+            }
+            
+            msgVacio.style.display = 'none';
+            divTotal.style.display = 'block';
+            btnProcesar.style.display = 'block';
+            
+            const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
+            totalEl.textContent = '$' + total.toFixed(2);
+            
+            container.innerHTML = '';
+            carrito.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between p-3 bg-gray-50 rounded-lg';
+                div.innerHTML = `<div class="flex-1"><p class="font-semibold text-sm">${item.nombre}</p><p class="text-green-600 font-bold">$${item.precio}</p></div><div class="flex items-center space-x-2"><button onclick="modificarCantidadCarrito(${item.id}, ${item.cantidad - 1})" class="w-8 h-8 rounded-full bg-red-500 text-white hover:bg-red-600 flex items-center justify-center">➖</button><span class="w-8 text-center font-bold">${item.cantidad}</span><button onclick="modificarCantidadCarrito(${item.id}, ${item.cantidad + 1})" class="w-8 h-8 rounded-full bg-green-500 text-white hover:bg-green-600 flex items-center justify-center">➕</button></div>`;
+                container.appendChild(div);
+            });
+        }
+
+        function procesarVenta() {
+            if (carrito.length === 0) return;
+            const nuevaVenta = { id: Date.now(), fecha: new Date(), items: [...carrito], total: carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0), vendedor: usuarioActual.nombre };
+            productos.forEach(p => {
+                const itemVendido = carrito.find(item => item.id === p.id);
+                if (itemVendido) p.stock -= itemVendido.cantidad;
+            });
+            ventas.unshift(nuevaVenta);
+            carrito = [];
+            guardarDatos();
+            mostrarCarrito();
+            filtrarProductos();
+            mostrarToast('¡Venta procesada exitosamente!');
+        }
+        
+        // --- INVENTARIO Y ESTADÍSTICAS ---
+        function mostrarInventario() {
+            const tabla = document.getElementById('inventario-tabla');
+            tabla.innerHTML = '';
+            productos.forEach(p => {
+                const stockClass = p.stock > 10 ? 'bg-green-100 text-green-800' : p.stock > 5 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
+                const row = document.createElement('tr');
+                row.className = 'border-b hover:bg-gray-50';
+                row.innerHTML = `<td class="px-4 py-3">#${p.codigo}</td><td class="px-4 py-3">${p.nombre}</td><td class="px-4 py-3"><span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">${p.categoria}</span></td><td class="px-4 py-3 font-bold text-green-600">$${p.precio}</td><td class="px-4 py-3"><span class="px-2 py-1 rounded text-xs font-semibold ${stockClass}">${p.stock}</span></td><td class="px-4 py-3"><button onclick="editarProducto(${p.id})" class="text-blue-600 hover:text-blue-800 mr-2">✏️</button></td>`;
+                tabla.appendChild(row);
+            });
+        }
+
+        function mostrarEstadisticas() {
+            const hoy = new Date().toDateString();
+            const ventasHoy = ventas.filter(v => new Date(v.fecha).toDateString() === hoy);
+            const totalVentasHoy = ventasHoy.reduce((sum, v) => sum + v.total, 0);
+            const productosVendidosHoy = ventasHoy.reduce((sum, v) => sum + v.items.reduce((itemSum, i) => itemSum + i.cantidad, 0), 0);
+            document.getElementById('ventas-hoy').textContent = '$' + totalVentasHoy.toFixed(2);
+            document.getElementById('productos-vendidos').textContent = productosVendidosHoy;
+            document.getElementById('total-productos').textContent = productos.length;
+            document.getElementById('transacciones-hoy').textContent = ventasHoy.length;
+
+            const historialEl = document.getElementById('historial-ventas');
+            historialEl.innerHTML = ventas.length > 0 ? '' : '<p class="text-gray-500 text-center py-4">No hay ventas registradas</p>';
+            ventas.slice(0, 20).forEach(v => {
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer';
+                div.setAttribute('onclick', `mostrarDetalleVenta(${v.id})`);
+                div.innerHTML = `<div><p class="font-semibold">Venta #${v.id}</p><p class="text-sm text-gray-600">${new Date(v.fecha).toLocaleString()}</p><p class="text-xs text-gray-500">${v.items.length} productos - ${v.vendedor || 'Sistema'}</p></div><div class="text-right"><p class="font-bold text-green-600">$${v.total.toFixed(2)}</p></div>`;
+                historialEl.appendChild(div);
+            });
+        }
+
+        // --- MODALES (EDICIÓN Y DETALLES) ---
+        function editarProducto(id) {
+            const p = productos.find(p => p.id === id);
+            if (!p) return;
+            document.getElementById('modal-title').textContent = 'Editar Producto';
+            document.getElementById('edit-id').value = p.id;
+            document.getElementById('edit-nombre').value = p.nombre;
+            document.getElementById('edit-codigo').value = p.codigo;
+            document.getElementById('edit-precio').value = p.precio;
+            document.getElementById('edit-stock').value = p.stock;
+            document.getElementById('edit-categoria').value = p.categoria;
+            document.getElementById('modal-editar').classList.remove('hidden');
+        }
+
+        function nuevoProducto() {
+            if (usuarioActual.rol !== 'admin') return mostrarToast('Solo los administradores pueden crear productos');
+            document.getElementById('modal-title').textContent = 'Nuevo Producto';
+            document.getElementById('edit-id').value = productos.length > 0 ? Math.max(...productos.map(p => p.id)) + 1 : 1;
+            ['edit-nombre', 'edit-codigo', 'edit-precio', 'edit-stock'].forEach(id => document.getElementById(id).value = '');
+            document.getElementById('edit-categoria').value = 'GALLETITAS';
+            document.getElementById('modal-editar').classList.remove('hidden');
+        }
+        
+        function guardarProducto() {
+            if (usuarioActual.rol !== 'admin') return mostrarToast('Solo los administradores pueden editar productos');
+            const id = parseInt(document.getElementById('edit-id').value);
+            const nombre = document.getElementById('edit-nombre').value.trim();
+            const codigo = document.getElementById('edit-codigo').value.trim();
+            const precio = parseFloat(document.getElementById('edit-precio').value);
+            const stock = parseInt(document.getElementById('edit-stock').value);
+            const categoria = document.getElementById('edit-categoria').value;
+            if (!nombre || !codigo || !categoria || isNaN(precio) || isNaN(stock) || precio <= 0 || stock < 0) {
+                return mostrarToast('Por favor completa todos los campos con valores válidos.');
+            }
+            const index = productos.findIndex(p => p.id === id);
+            const producto = { id, nombre, codigo, precio, stock, categoria };
+            if (index !== -1) productos[index] = producto;
+            else productos.push(producto);
+            guardarDatos();
+            if (document.getElementById('vista-inventario').style.display === 'block') mostrarInventario();
+            if (document.getElementById('vista-ventas').style.display === 'block') filtrarProductos();
+            cerrarModal();
+            mostrarToast('Producto guardado exitosamente');
+        }
+
+        function cerrarModal() {
+            document.getElementById('modal-editar').classList.add('hidden');
+        }
+
+        function mostrarDetalleVenta(ventaId) {
+            const venta = ventas.find(v => v.id === ventaId);
+            if (!venta) return;
+            const modalContent = document.getElementById('contenido-detalle-venta');
+            let itemsHtml = venta.items.map(item => `<div class="grid grid-cols-4 gap-2 py-2 border-b"><span class="col-span-2">${item.nombre}</span><span class="text-center">${item.cantidad} x $${item.precio}</span><span class="text-right font-semibold">$${(item.cantidad * item.precio).toFixed(2)}</span></div>`).join('');
+            modalContent.innerHTML = `<div class="space-y-2 mb-4"><p><strong>ID Venta:</strong> #${venta.id}</p><p><strong>Fecha:</strong> ${new Date(venta.fecha).toLocaleString()}</p><p><strong>Vendedor:</strong> ${venta.vendedor}</p><p class="text-lg font-bold"><strong>Total:</strong> <span class="text-green-600">$${venta.total.toFixed(2)}</span></p></div><h4 class="font-bold mb-2">Productos:</h4><div class="max-h-64 overflow-y-auto">${itemsHtml}</div>`;
+            document.getElementById('modal-detalle-venta').classList.remove('hidden');
+        }
+
+        function cerrarModalDetalleVenta() {
+            document.getElementById('modal-detalle-venta').classList.add('hidden');
+        }
+        
+        // --- REPORTES Y EXPORTACIÓN ---
+        function mostrarVistaReportes() {
+            const filtroCategoria = document.getElementById('filtro-categoria-reporte');
+            const filtroVendedor = document.getElementById('filtro-vendedor-reporte');
+            const categorias = ['TODAS', ...new Set(productos.map(p => p.categoria))];
+            filtroCategoria.innerHTML = categorias.map(c => `<option value="${c}">${c}</option>`).join('');
+            const vendedores = ['TODOS', ...new Set(ventas.map(v => v.vendedor))];
+            filtroVendedor.innerHTML = vendedores.map(v => `<option value="${v}">${v}</option>`).join('');
+            const fechaFin = new Date();
+            const fechaInicio = new Date();
+            fechaInicio.setDate(fechaFin.getDate() - 30);
+            document.getElementById('filtro-fecha-inicio').value = fechaInicio.toISOString().split('T')[0];
+            document.getElementById('filtro-fecha-fin').value = fechaFin.toISOString().split('T')[0];
+            document.getElementById('resultado-reporte').classList.add('hidden');
+        }
+
+        function generarReporte() {
+            const fechaInicioStr = document.getElementById('filtro-fecha-inicio').value;
+            const fechaFinStr = document.getElementById('filtro-fecha-fin').value;
+            // Corregir problema de zona horaria al parsear fechas
+            const fechaInicio = new Date(fechaInicioStr + 'T00:00:00');
+            const fechaFin = new Date(fechaFinStr + 'T23:59:59');
+            const categoria = document.getElementById('filtro-categoria-reporte').value;
+            const vendedor = document.getElementById('filtro-vendedor-reporte').value;
+
+            const ventasFiltradas = ventas.filter(v => {
+                const fechaVenta = new Date(v.fecha);
+                return fechaVenta >= fechaInicio && fechaVenta <= fechaFin && (vendedor === 'TODOS' || v.vendedor === vendedor);
+            });
+            const productosAgregados = {};
+            ventasFiltradas.forEach(v => {
+                v.items.forEach(item => {
+                    if (categoria === 'TODAS' || item.categoria === categoria) {
+                        if (!productosAgregados[item.id]) {
+                            productosAgregados[item.id] = { ...item, cantidadVendida: 0, totalVendido: 0 };
+                        }
+                        productosAgregados[item.id].cantidadVendida += item.cantidad;
+                        productosAgregados[item.id].totalVendido += item.cantidad * item.precio;
+                    }
+                });
+            });
+            reportData = Object.values(productosAgregados).sort((a, b) => b.cantidadVendida - a.cantidadVendida);
+            
+            const cuerpoTabla = document.getElementById('cuerpo-tabla-reporte');
+            const pieTabla = document.getElementById('pie-tabla-reporte');
+            cuerpoTabla.innerHTML = '';
+            pieTabla.innerHTML = '';
+
+            if (reportData.length === 0) {
+                cuerpoTabla.innerHTML = '<tr><td colspan="6" class="text-center py-4">No se encontraron resultados.</td></tr>';
+            } else {
+                reportData.forEach(item => {
+                    cuerpoTabla.innerHTML += `<tr><td class="border-t px-4 py-2">#${item.codigo}</td><td class="border-t px-4 py-2">${item.nombre}</td><td class="border-t px-4 py-2">${item.categoria}</td><td class="border-t px-4 py-2 text-center">${item.cantidadVendida}</td><td class="border-t px-4 py-2 text-right">$${item.precio.toFixed(2)}</td><td class="border-t px-4 py-2 text-right font-semibold">$${item.totalVendido.toFixed(2)}</td></tr>`;
+                });
+                const totalCantidad = reportData.reduce((s, i) => s + i.cantidadVendida, 0);
+                const granTotal = reportData.reduce((s, i) => s + i.totalVendido, 0);
+                pieTabla.innerHTML = `<tr><td class="px-4 py-3" colspan="3">Totales Generales</td><td class="px-4 py-3 text-center">${totalCantidad}</td><td class="px-4 py-3"></td><td class="px-4 py-3 text-right">$${granTotal.toFixed(2)}</td></tr>`;
+            }
+            document.getElementById('reporte-titulo').textContent = `Reporte de Ventas (${fechaInicioStr} al ${fechaFinStr})`;
+            document.getElementById('resultado-reporte').classList.remove('hidden');
+            mostrarToast('Reporte generado exitosamente');
+        }
+
+        function exportarAExcel() {
+            if (reportData.length === 0) return mostrarToast('No hay datos para exportar');
+            const ws_data = [
+                ["Reporte de Ventas"],
+                [`Filtros: ${document.getElementById('filtro-fecha-inicio').value} a ${document.getElementById('filtro-fecha-fin').value}, Cat: ${document.getElementById('filtro-categoria-reporte').value}, Vend: ${document.getElementById('filtro-vendedor-reporte').value}`],
+                [],
+                ["Código", "Producto", "Categoría", "Cant. Vendida", "Precio Unit.", "Total Vendido"]
+            ];
+            reportData.forEach(item => ws_data.push([item.codigo, item.nombre, item.categoria, item.cantidadVendida, item.precio, item.totalVendido]));
+            const totalCantidad = reportData.reduce((s, i) => s + i.cantidadVendida, 0);
+            const granTotal = reportData.reduce((s, i) => s + i.totalVendido, 0);
+            ws_data.push([], ["", "", "Totales", totalCantidad, "", granTotal]);
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(ws_data);
+            ws['!cols'] = [{wch:10}, {wch:40}, {wch:15}, {wch:15}, {wch:15}, {wch:15}];
+            XLSX.utils.book_append_sheet(wb, ws, "Reporte de Ventas");
+            XLSX.writeFile(wb, `Reporte_Ventas_${new Date().toISOString().split('T')[0]}.xlsx`);
+            mostrarToast('Exportando a Excel...');
+        }
+        
+        function copiarParaGoogleSheets() {
+             if (reportData.length === 0) return mostrarToast('No hay datos para copiar');
+            let tsvContent = "Código\tProducto\tCategoría\tCant. Vendida\tPrecio Unit.\tTotal Vendido\n";
+            reportData.forEach(item => {
+                tsvContent += `${item.codigo}\t${item.nombre}\t${item.categoria}\t${item.cantidadVendida}\t${item.precio}\t${item.totalVendido}\n`;
+            });
+            navigator.clipboard.writeText(tsvContent).then(() => {
+                mostrarToast('Copiado al portapapeles');
+                document.getElementById('modal-google-sheets').classList.remove('hidden');
+            }, () => mostrarToast('Error al copiar'));
+        }
+    </script>
+</body>
+</html>
